@@ -14,17 +14,17 @@ model_name = 'ann'
 train_PDEFind = 1
 
 #find top equations from PDE-FIND Results
-find_eqns = 0
+find_eqns = 1
 
 #Perform model selection for top equations
 simulate_learned_compare = 1
 
 #Perform post-processing, final parameter estimation
-param_est_final = 0
+param_est_final = 1
 
 
 #estimate parameters for Fisher-KPP model
-param_est_FKPP = 0
+param_est_FKPP = 1
 
 
 #training split for PDE-FIND
