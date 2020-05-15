@@ -1,0 +1,5 @@
+for i in {0..71}
+do
+  python fkpp_surface_trainer.py --file_idx $i --verbosity 1 --num_reps 1 --gpu 1 &
+  sleep 1200s
+done
