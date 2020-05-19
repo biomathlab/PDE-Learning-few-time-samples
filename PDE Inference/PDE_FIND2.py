@@ -7,11 +7,66 @@ import itertools
 import operator
 import pdb
 import math
-from tqdm import tqdm
 
 from sklearn.neighbors import NearestNeighbors
 
+def class_convert_vars(sim,time_int,N,noise):
 
+    """
+    Converts the variables sim, time_int, N, noise into corresponding variables to 
+    communicate with the PDEFind class
+
+    input:
+        sim.        : simulation type (slow,diffuse,fast,nodular)
+        time_int    : Simulation timescale (long,short)
+        N           : number of time samples (3,5,10)
+        noise       : noise level (0.01,0.05)
+
+    output:
+        sim.        : simulation number (1,3,2,4)
+        time_int    : Simulation timescale ("","_early_time)
+        N           : number of time samples ("03","05","10")
+        noise       : noise level ("01","05")
+
+    """
+
+
+    if sim.lower() == "slow":
+        sim = 1
+    elif sim.lower() == "diffuse":
+        sim=3
+    elif sim.lower() == "fast":
+        sim=2
+    elif sim.lower() == "nodular":
+        sim=4
+    else:
+        raise Exception("sim does not match one of the four considered")
+        
+    if time_int.lower() == "long":
+        time_int = ""
+    elif sim.lower() == "short":
+        time_int = "_early_time"
+    else:
+        raise Exception("time interval does not match one of the four considered")
+        
+    if N == 3:
+        N = "03"
+    elif N == 5:
+        N = "05"
+    elif N == 10:
+        N = "10"
+    else:
+        raise Exception("N does not match one of the four considered")
+        
+    if noise == 0.01:
+        noise = "01"
+    elif noise == 0.05:
+        noise = "05"
+    else:
+        raise Exception("noise does not match one of the four considered")
+
+
+    return sim,time_int,N,noise
 
 def build_Theta(data, derivatives, derivatives_description, P, data_description = None):
     
@@ -88,7 +143,7 @@ def build_Theta(data, derivatives, derivatives_description, P, data_description 
                 
     return Theta, descr
 
-def print_pde(w, rhs_description, ut = 'u_t',n=5):
+def print_pde(w, rhs_description, ut = 'u_t',n=5,imag_print=0):
 
     '''
     records the equation form given as a string.
@@ -119,6 +174,40 @@ def print_pde(w, rhs_description, ut = 'u_t',n=5):
             first = False
     #print(pde)
     return(pde)
+
+
+def write_pde(w, rhs_description, ut = 'u_t'):
+
+    '''
+    records the equation form given as a string.
+
+    Input:
+        
+        w                   : np.array of equation parameters
+        rhs_description     : list of equation terms 
+        ut                  : string of what the left hand side looks like
+        
+    Output:
+    
+        pde                 : string of equation form
+
+    '''
+
+
+    pde = ut + ' = '
+    first = True
+    for i in range(len(w)):
+        if w[i] != 0:
+            if not first:
+                pde = pde + ' + '
+            if w[i].imag == 0:
+                pde = pde + "%03.3f" % (w[i].real) + rhs_description[i] + "\n   "
+            else:
+                pde = pde + "%03.3f %+03.3fi" % (w[i].real, w[i].imag) + rhs_description[i] + "\n   "
+            first = False
+    print(pde)
+    return pde
+
 
 def print_pde_table(w, rhs_description, se = None, ut = 'u_t',n=3):
 
@@ -208,7 +297,7 @@ def TrainSTRidge(R, Ut, lam, d_tol, maxit = 25, STR_iters = 10, l0_penalty = Non
 
     # Get the standard least squares estimator
     w = np.zeros((D,1))
-    w_best = np.linalg.lstsq(TrainR, TrainY,rcond=None)[0]
+    w_best = np.linalg.lstsq(TrainR, TrainY,rcond=-1)[0]
     err_best = np.linalg.norm(TestY - TestR.dot(w_best), 2) + l0_penalty*np.count_nonzero(w_best)
     tol_best = 0
 
@@ -295,7 +384,7 @@ def Lasso(X0, Y, lam, w = np.array([0]), maxit = 100, normalize = 2):
     
     # Now that we have the sparsity pattern, used least squares.
     biginds = np.where(w != 0)[0]
-    if biginds != []: w[biginds] = np.linalg.lstsq(X[:, biginds],Y)[0]
+    if biginds != []: w[biginds] = np.linalg.lstsq(X[:, biginds],Y,rcond=-1)[0]
 
     # Finally, reverse the regularization so as to be able to use with raw data
     if normalize != 0: return np.multiply(Mreg,w)
@@ -338,8 +427,8 @@ def STRidge(X0, y, lam, maxit, tol, normalize = 2, print_results = False):
     else: X = X0
     
     # Get the standard ridge esitmate
-    if lam != 0: w = np.linalg.lstsq(X.T.dot(X) + lam*np.eye(d),X.T.dot(y),rcond=None)[0]
-    else: w = np.linalg.lstsq(X,y)[0]
+    if lam != 0: w = np.linalg.lstsq(X.T.dot(X) + lam*np.eye(d),X.T.dot(y),rcond=-1)[0]
+    else: w = np.linalg.lstsq(X,y,rcond=-1)[0]
     num_relevant = d
     biginds = np.where( abs(w) > tol)[0]
     
@@ -363,11 +452,11 @@ def STRidge(X0, y, lam, maxit, tol, normalize = 2, print_results = False):
         
         # Otherwise get a new guess
         w[smallinds] = 0
-        if lam != 0: w[biginds] = np.linalg.lstsq(X[:, biginds].T.dot(X[:, biginds]) + lam*np.eye(len(biginds)),X[:, biginds].T.dot(y),rcond=None)[0]
-        else: w[biginds] = np.linalg.lstsq(X[:, biginds],y)[0]
+        if lam != 0: w[biginds] = np.linalg.lstsq(X[:, biginds].T.dot(X[:, biginds]) + lam*np.eye(len(biginds)),X[:, biginds].T.dot(y),rcond=-1)[0]
+        else: w[biginds] = np.linalg.lstsq(X[:, biginds],y,rcond=-1)[0]
 
     # Now that we have the sparsity pattern, use standard least squares to get w
-    if biginds != []: w[biginds] = np.linalg.lstsq(X[:, biginds],y,rcond=None)[0]
+    if biginds != []: w[biginds] = np.linalg.lstsq(X[:, biginds],y,rcond=-1)[0]
     
     if normalize != 0: return np.multiply(Mreg,w)
     else: return w
@@ -421,7 +510,7 @@ def FoBaGreedy(X, y, epsilon = 0.1, maxit_f = 1000, maxit_b = 5, backwards_freq 
         
         F[k] = F[k-1].union({i})
         w[k] = np.zeros((d,1), dtype=np.complex64)
-        w[k][list(F[k])] = np.linalg.lstsq(X[:, list(F[k])], y)[0]
+        w[k][list(F[k])] = np.linalg.lstsq(X[:, list(F[k])], y,rcond=-1)[0]
 
         # check for break condition
         delta[k] = np.linalg.norm(X.dot(w[k-1]) - y) - np.linalg.norm(X.dot(w[k]) - y)
@@ -449,7 +538,7 @@ def FoBaGreedy(X, y, epsilon = 0.1, maxit_f = 1000, maxit_b = 5, backwards_freq 
                 k = k-1;
                 F[k] = F[k+1].difference({j})
                 w[k] = np.zeros((d,1), dtype=np.complex64)
-                w[k][list(F[k])] = np.linalg.lstsq(X[:, list(F[k])], y)[0]
+                w[k][list(F[k])] = np.linalg.lstsq(X[:, list(F[k])], y,rcond=-1)[0]
 
     return w[k] 
     
@@ -599,7 +688,7 @@ def data_shuf(Ut,R,shufMethod,trainPerc,valPerc,xn,tn,xbin=5,tbin=5):
 
     '''
     
-    p_length = len(Ut)//stack
+    p_length = len(Ut)
     
     #permute
     if shufMethod == 'perm':
@@ -630,12 +719,6 @@ def data_shuf(Ut,R,shufMethod,trainPerc,valPerc,xn,tn,xbin=5,tbin=5):
     ntrain = len(ptrain)
     nval = len(pval)
     ntest = len(ptest)
-    
-    #stack entries!
-    for i in np.arange(stack-1):
-        ptrain = np.concatenate((ptrain,ptrain[:ntrain]+(i+1)*p_length))
-        pval = np.concatenate((pval,pval[:nval]+(i+1)*p_length))
-        ptest = np.concatenate((ptest,ptest[:ntest]+(i+1)*p_length))
     
     #split into train, val, test
     UtTrain = Ut[ptrain]
@@ -697,7 +780,7 @@ def run_PDE_Find_train_val (RTrain,UtTrain,RVal,utVal,algoName,description,lambd
         val_score = np.zeros(len(X_mesh))
         TP_FN_score = np.zeros(len(X_mesh))
         
-        for i,hparams in enumerate(tqdm(X_mesh)):
+        for i,hparams in enumerate(X_mesh):
             xi = STRidge(RTrain,UtTrain,hparams[0], 1000, hparams[1])
             val_score[i] = run_PDE_Find_Test(RVal,utVal,xi)
         if deriv_list != None:
@@ -720,7 +803,7 @@ def run_PDE_Find_train_val (RTrain,UtTrain,RVal,utVal,algoName,description,lambd
         val_score = np.zeros(len(lambda_vec))
         TP_FN_score = np.zeros(len(lambda_vec))
         
-        for j,l in enumerate(tqdm(lambda_vec)):
+        for j,l in enumerate(lambda_vec):
             xi = FoBaGreedy(RTrain, UtTrain,l)
             
             val_score[j] = run_PDE_Find_Test(RVal,utVal,xi)
@@ -982,7 +1065,7 @@ def PDE_FIND_prune_lstsq(xi,utTrain,utVal,thetaTrain,thetaVal,description,val_sc
         thetaVal_hat = np.delete(thetaVal_tilde,i,1)
         
         #nonsparse regression
-        xi_hat = np.linalg.lstsq(thetaTrain_hat,utTrain)[0]#run_PDE_Find_train(thetaTrain_hat,utTrain,algoName,0)
+        xi_hat = np.linalg.lstsq(thetaTrain_hat,utTrain,rcond=-1)[0]#run_PDE_Find_train(thetaTrain_hat,utTrain,algoName,0)
         #get new validation score
         val_score_new = run_PDE_Find_Test(thetaVal_hat,utVal,xi_hat)
         val_score_vec[i] = val_score_new
@@ -997,7 +1080,7 @@ def PDE_FIND_prune_lstsq(xi,utTrain,utVal,thetaTrain,thetaVal,description,val_sc
     description_tilde = [description_tilde[i] for i in np.where(np.squeeze(keep_ind))[0]]
     #final training on final library
     if thetaTrain_tilde.shape[1] > 0:
-        xi_tilde = np.linalg.lstsq(thetaTrain_tilde,utTrain)[0]#xi_tilde[keep_ind]
+        xi_tilde = np.linalg.lstsq(thetaTrain_tilde,utTrain,rcond=-1)[0]#xi_tilde[keep_ind]
     else:
         xi_tilde = []
     #calculate final validation score
@@ -1094,7 +1177,7 @@ def xi_convert_full(xi,desc,desc_full):
         #where is this ith term located in full description
         desc_ind = desc_full.index(desc[i])
         
-        xi_full[desc_ind] = xi[i]
+        xi_full[desc_ind] = np.real(xi[i])
     
     
     return xi_full

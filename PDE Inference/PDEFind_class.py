@@ -3,7 +3,7 @@ import pdb
 import os
 import time 
 from collections import Counter
-
+from tqdm import tqdm
 from scipy.signal import savgol_filter
 from PDE_FIND2 import *
 from model_selection_IP import *
@@ -95,15 +95,17 @@ class PDE_Findclass(object):
 
         X,T,Ut,Theta,description = theta_construct_1d(mat,self.deg)
 
-
         self.description = description
         x = np.unique(X)
         t = np.unique(T)
         
+        print("Loaded in data for PDE-FIND, now determining top Models from "+str(self.reals)+" Simulations...")
+
+
         #now perform the training "reals" times
-        for r in np.arange(self.reals):
+        for r in tqdm(np.arange(self.reals)):
             for i,d in enumerate(self.data_dir):
-                print("Realization " + str(r) + " for " + d + " started at " + time.asctime(time.localtime()))
+                
                 
                 #split data into training, validation data
                 utTrain,thetaTrain,ptrain,utVal,thetaVal,pval,_,_,_ = data_shuf(Ut[i],Theta,self.shuf_method,self.trainPerc,self.valPerc,len(x),len(t))
@@ -121,9 +123,6 @@ class PDE_Findclass(object):
                 else:
                     #don't prune if xi only have one nonzero vector
                     xi_new = xi
-                
-                if self.print_pdes == True:
-                    print("Predicted equation is " + print_pde(xi_new,self.description,ut=data_description[i]+'_{t}'))
                 
                 #append to list of xi values
                 xi_list_no_prune[i].append(xi)
@@ -212,15 +211,9 @@ class PDE_Findclass(object):
                     if i == 0:
                         text_f.write("\n\\begin{verbatim}")
                         text_f.write("\nFor simulation " + self.data_file[0] + ", PDEFIND with "+self.comp_str+" predicts the following equations:\n\\end{verbatim}\n\\begin{equation}\n\\begin{aligned}")
-                      
-                else:
-                    print("For simulation " + str(d) + ", PDEFIND with "+self.comp_str+" predicts the following equations:")
                 for j in np.arange(np.min((self.num_eqns,len(xi_vote_params[i])))):
-                    if self.save_learned_eqns:
-                        text_f.write("\n"+write_pde_SE_latex(xi_vote_params[i][j],xi_vote_params_SD[i][j],data['description'],ut=data_description[i]+'_t'))
-                    else:
-                        print(str(j+1)+ ". ")
-                        write_pde_SE(xi_vote_params[i][j],xi_vote_params_SD[i][j],data['description'][i],ut=data_description[i]+'_t')
+                    print(str(j+1)+ ". ")
+                    write_pde(xi_vote_params[i][j],data['description'],ut=data_description[i]+'_t')
                         
             if self.save_learned_eqns:
                 text_f.write("\n\\end{aligned}\n\\end{equation}")
@@ -290,7 +283,7 @@ class PDE_Findclass(object):
         N = len(U2)
 
         #simulate each learned model
-        for xi in xi_list:
+        for i,xi in enumerate(xi_list):
             
             #simulate PDE
             y_tmp = PDE_sim(xi,RHS,X1,t_sim,IC,description=description)
@@ -300,6 +293,8 @@ class PDE_Findclass(object):
 
             #record AIC score on final time point
             AIC.append(2*np.sum(xi!=0) + N*np.log(RSS_GLS(y_tmp[:,0],U2,0.5)))
+
+            print("For model " + str(i+1) +", we compute an AIC of " + str(AIC[-1]) )
         
 
         #top eqn has lowest AIC
@@ -314,8 +309,11 @@ class PDE_Findclass(object):
         data['learned_AIC'] = AIC_learned_eqns
         data['description'] = description
         data['u_learned'] = y_learned
-        
+
         np.save(self.write_dir[0]+"_xi_results_final",data)
+
+        print("Final inferred Equation is of the form : ")
+        print(print_pde(data['final_xi'],description))
         
     
 
